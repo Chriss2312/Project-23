@@ -1,3 +1,5 @@
+'use client';
+
 import {
   Activity,
   Calendar,
@@ -26,8 +28,59 @@ import {
   SidebarGroupContent,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
+import { useEffect, useState } from "react"
+import { API_ENDPOINTS, fetchApi } from "@/lib/api"
+
+// Define types for our API responses
+interface DashboardStats {
+  total_students: number;
+  new_students_this_week: number;
+  todays_attendance_percentage: number;
+  attendance_change: number;
+  low_attendance_count: number;
+}
+
+interface LiveAttendanceEvent {
+  id: number;
+  name: string;
+  time: string;
+  status: string;
+  course: string;
+}
+
+interface DepartmentAttendance {
+  name: string;
+  attendance: number;
+}
+
+interface AttendanceRecord {
+  id: number;
+  name: string;
+  studentId: string;
+  time: string;
+  date: string;
+  subject: string;
+  status: string;
+}
 
 export default function AdminDashboard() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const data = await fetchApi<DashboardStats>(API_ENDPOINTS.stats);
+        setStats(data);
+      } catch (err) {
+        setError('Failed to load dashboard statistics');
+        console.error(err);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full bg-gray-100 dark:bg-gray-900">
@@ -140,68 +193,79 @@ export default function AdminDashboard() {
           </header>
 
           <main className="flex-1 overflow-auto p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">1,248</div>
-                  <p className="text-xs text-muted-foreground mt-1">+12 new this week</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Today's Attendance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">87%</div>
-                  <p className="text-xs text-green-500 mt-1">+2% from yesterday</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Low Attendance Alert</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-orange-500">42</div>
-                  <p className="text-xs text-muted-foreground mt-1">Students below 75%</p>
-                </CardContent>
-              </Card>
-            </div>
+            {error ? (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <strong className="font-bold">Error!</strong>
+                <span className="block sm:inline"> {error}</span>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{stats?.total_students || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">+{stats?.new_students_this_week || 0} new this week</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Today's Attendance</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{stats?.todays_attendance_percentage || 0}%</div>
+                      <p className={`text-xs mt-1 ${stats?.attendance_change && stats.attendance_change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {stats?.attendance_change && stats.attendance_change >= 0 ? '+' : ''}{stats?.attendance_change || 0}% from yesterday
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Low Attendance Alert</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-orange-500">{stats?.low_attendance_count || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Students below 75%</p>
+                    </CardContent>
+                  </Card>
+                </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <Card className="col-span-1">
-                <CardHeader>
-                  <CardTitle>Live Attendance Feed</CardTitle>
-                  <CardDescription>Real-time fingerprint scan data</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <LiveAttendanceFeed />
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="col-span-1">
-                <CardHeader>
-                  <CardTitle>Attendance by Department</CardTitle>
-                  <CardDescription>Weekly average attendance rate</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <AttendanceByDepartment />
-                </CardContent>
-              </Card>
-            </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  <Card className="col-span-1">
+                    <CardHeader>
+                      <CardTitle>Live Attendance Feed</CardTitle>
+                      <CardDescription>Real-time fingerprint scan data</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <LiveAttendanceFeed />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="col-span-1">
+                    <CardHeader>
+                      <CardTitle>Attendance by Department</CardTitle>
+                      <CardDescription>Weekly average attendance rate</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <AttendanceByDepartment />
+                    </CardContent>
+                  </Card>
+                </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Attendance Records</CardTitle>
-                <CardDescription>Latest fingerprint scans from all departments</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RecentAttendanceTable />
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent Attendance Records</CardTitle>
+                    <CardDescription>Latest fingerprint scans from all departments</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <RecentAttendanceTable />
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </main>
         </div>
       </div>
@@ -210,12 +274,26 @@ export default function AdminDashboard() {
 }
 
 function LiveAttendanceFeed() {
-  const attendanceEvents = [
-    { id: 1, name: "John Smith", time: "Just now", status: "Present", course: "Computer Science" },
-    { id: 2, name: "Emily Johnson", time: "2 mins ago", status: "Present", course: "Electrical Engineering" },
-    { id: 3, name: "Michael Brown", time: "5 mins ago", status: "Present", course: "Mechanical Engineering" },
-    { id: 4, name: "Sarah Davis", time: "8 mins ago", status: "Present", course: "Civil Engineering" },
-  ]
+  const [attendanceEvents, setAttendanceEvents] = useState<LiveAttendanceEvent[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLiveFeed = async () => {
+      try {
+        const data = await fetchApi<LiveAttendanceEvent[]>(API_ENDPOINTS.liveFeed);
+        setAttendanceEvents(data);
+      } catch (err) {
+        setError('Failed to load live feed');
+        console.error(err);
+      }
+    };
+
+    fetchLiveFeed();
+    const interval = setInterval(fetchLiveFeed, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (error) return <div className="text-red-500">{error}</div>;
 
   return (
     <div className="space-y-4">
@@ -242,13 +320,24 @@ function LiveAttendanceFeed() {
 }
 
 function AttendanceByDepartment() {
-  const departments = [
-    { name: "Computer Science", attendance: 92 },
-    { name: "Electrical Engineering", attendance: 88 },
-    { name: "Mechanical Engineering", attendance: 85 },
-    { name: "Civil Engineering", attendance: 79 },
-    { name: "Business Administration", attendance: 72 },
-  ]
+  const [departments, setDepartments] = useState<DepartmentAttendance[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchDepartmentAttendance = async () => {
+      try {
+        const data = await fetchApi<DepartmentAttendance[]>(API_ENDPOINTS.departmentAttendance);
+        setDepartments(data);
+      } catch (err) {
+        setError('Failed to load department attendance');
+        console.error(err);
+      }
+    };
+
+    fetchDepartmentAttendance();
+  }, []);
+
+  if (error) return <div className="text-red-500">{error}</div>;
 
   return (
     <div className="space-y-4">
@@ -268,53 +357,24 @@ function AttendanceByDepartment() {
 }
 
 function RecentAttendanceTable() {
-  const records = [
-    {
-      id: 1,
-      name: "John Smith",
-      studentId: "CS2023001",
-      time: "09:15 AM",
-      date: "Today",
-      subject: "Database Systems",
-      status: "Present",
-    },
-    {
-      id: 2,
-      name: "Emily Johnson",
-      studentId: "EE2023042",
-      time: "09:18 AM",
-      date: "Today",
-      subject: "Circuit Theory",
-      status: "Present",
-    },
-    {
-      id: 3,
-      name: "Michael Brown",
-      studentId: "ME2023105",
-      time: "09:22 AM",
-      date: "Today",
-      subject: "Thermodynamics",
-      status: "Present",
-    },
-    {
-      id: 4,
-      name: "Sarah Davis",
-      studentId: "CE2023078",
-      time: "09:25 AM",
-      date: "Today",
-      subject: "Structural Analysis",
-      status: "Present",
-    },
-    {
-      id: 5,
-      name: "David Wilson",
-      studentId: "CS2023012",
-      time: "09:30 AM",
-      date: "Today",
-      subject: "Database Systems",
-      status: "Present",
-    },
-  ]
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchRecentAttendance = async () => {
+      try {
+        const data = await fetchApi<AttendanceRecord[]>(API_ENDPOINTS.recentAttendance);
+        setRecords(data);
+      } catch (err) {
+        setError('Failed to load recent attendance');
+        console.error(err);
+      }
+    };
+
+    fetchRecentAttendance();
+  }, []);
+
+  if (error) return <div className="text-red-500">{error}</div>;
 
   return (
     <div className="overflow-x-auto">

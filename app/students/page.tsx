@@ -1,3 +1,5 @@
+'use client';
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -31,8 +33,97 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { API_ENDPOINTS, Student, StudentStats, fetchApi } from "@/lib/api"
+import { useEffect, useState } from "react"
+import { ExportButton } from "@/components/ExportButton"
+import { StudentProfileDialog } from "@/components/student-profile-dialog"
+import { StudentAttendanceDialog } from "@/components/student-attendance-dialog"
+import { SendNotificationDialog } from "@/components/send-notification-dialog"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function StudentsPage() {
+  const [stats, setStats] = useState<StudentStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
+  const [currentTab, setCurrentTab] = useState<'all' | 'low-attendance' | 'perfect-attendance'>('all');
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const { toast } = useToast();
+
+  const fetchStudents = async (department?: string, attendance?: 'low' | 'perfect' | 'all') => {
+    try {
+      setLoading(true);
+      const actualDepartment = department && !['_all', '_none'].includes(department) ? department : undefined;
+      const data = await fetchApi<StudentStats>(API_ENDPOINTS.studentStats(actualDepartment, attendance));
+      setStats(data);
+      setError(null);
+    } catch (err) {
+      setError('Failed to load student data');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const attendanceMap = {
+      'all': 'all' as const,
+      'low-attendance': 'low' as const,
+      'perfect-attendance': 'perfect' as const
+    };
+    
+    fetchStudents(selectedDepartment, attendanceMap[currentTab]);
+  }, [selectedDepartment, currentTab]);
+
+  const filteredStudents = stats?.students.filter(student => 
+    student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.student_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (student.department?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+  ) || [];
+
+  const handleMarkAbsent = async (student: Student) => {
+    try {
+      await fetchApi(API_ENDPOINTS.studentMarkAbsent(student.id), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      toast({
+        title: "Success",
+        description: `${student.name} has been marked as absent.`,
+      });
+
+      // Refresh the student list
+      fetchStudents(selectedDepartment, currentTab === 'all' ? 'all' : currentTab === 'low-attendance' ? 'low' : 'perfect');
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to mark student as absent. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading) {
+    return <div className="w-full h-full p-6">Loading...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-full p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full p-6">
       <div className="flex items-center justify-between mb-6">
@@ -81,27 +172,10 @@ export default function StudentsPage() {
                       <SelectValue placeholder="Select department" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cs">Computer Science</SelectItem>
-                      <SelectItem value="ee">Electrical Engineering</SelectItem>
-                      <SelectItem value="me">Mechanical Engineering</SelectItem>
-                      <SelectItem value="ce">Civil Engineering</SelectItem>
-                      <SelectItem value="ba">Business Administration</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="year" className="text-right">
-                    Year
-                  </Label>
-                  <Select>
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder="Select year" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">First Year</SelectItem>
-                      <SelectItem value="2">Second Year</SelectItem>
-                      <SelectItem value="3">Third Year</SelectItem>
-                      <SelectItem value="4">Fourth Year</SelectItem>
+                      <SelectItem value="_none">Select department</SelectItem>
+                      {stats?.departments.map(dept => (
+                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -117,7 +191,13 @@ export default function StudentsPage() {
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input type="search" placeholder="Search students by name, ID, or department..." className="pl-8 w-full" />
+          <Input 
+            type="search" 
+            placeholder="Search students by name, ID, or department..." 
+            className="pl-8 w-full"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
         <div className="flex items-center space-x-2">
           <Button variant="outline" className="flex items-center">
@@ -125,52 +205,162 @@ export default function StudentsPage() {
             Filters
             <ChevronDown className="ml-2 h-4 w-4" />
           </Button>
-          <Select>
+          <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="All Departments" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              <SelectItem value="cs">Computer Science</SelectItem>
-              <SelectItem value="ee">Electrical Engineering</SelectItem>
-              <SelectItem value="me">Mechanical Engineering</SelectItem>
-              <SelectItem value="ce">Civil Engineering</SelectItem>
-              <SelectItem value="ba">Business Administration</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="All Years" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Years</SelectItem>
-              <SelectItem value="1">First Year</SelectItem>
-              <SelectItem value="2">Second Year</SelectItem>
-              <SelectItem value="3">Third Year</SelectItem>
-              <SelectItem value="4">Fourth Year</SelectItem>
+              <SelectItem value="_all">All Departments</SelectItem>
+              {stats?.departments.map(dept => (
+                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <Tabs defaultValue="all">
+      <Tabs value={currentTab} onValueChange={(value: any) => setCurrentTab(value)}>
         <TabsList className="mb-6">
-          <TabsTrigger value="all">All Students</TabsTrigger>
-          <TabsTrigger value="low-attendance">Low Attendance</TabsTrigger>
-          <TabsTrigger value="perfect-attendance">Perfect Attendance</TabsTrigger>
+          <TabsTrigger value="all">
+            All Students ({stats?.summary.total_students || 0})
+          </TabsTrigger>
+          <TabsTrigger value="low-attendance">
+            Low Attendance ({stats?.summary.low_attendance_count || 0})
+          </TabsTrigger>
+          <TabsTrigger value="perfect-attendance">
+            Perfect Attendance ({stats?.summary.perfect_attendance_count || 0})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="m-0">
+          <StudentTable 
+            students={filteredStudents}
+            showExport={currentTab === 'all'}
+            showNotify={currentTab === 'low-attendance'}
+            showRecognition={currentTab === 'perfect-attendance'}
+            onViewProfile={(student) => {
+              setSelectedStudent(student);
+              setProfileOpen(true);
+            }}
+            onViewAttendance={(student) => {
+              setSelectedStudent(student);
+              setAttendanceOpen(true);
+            }}
+            onSendNotification={(student) => {
+              setSelectedStudent(student);
+              setNotificationOpen(true);
+            }}
+            onMarkAbsent={handleMarkAbsent}
+          />
+        </TabsContent>
+
+        <TabsContent value="low-attendance" className="m-0">
+          <StudentTable 
+            students={filteredStudents}
+            showExport={currentTab === 'all'}
+            showNotify={currentTab === 'low-attendance'}
+            showRecognition={currentTab === 'perfect-attendance'}
+            onViewProfile={(student) => {
+              setSelectedStudent(student);
+              setProfileOpen(true);
+            }}
+            onViewAttendance={(student) => {
+              setSelectedStudent(student);
+              setAttendanceOpen(true);
+            }}
+            onSendNotification={(student) => {
+              setSelectedStudent(student);
+              setNotificationOpen(true);
+            }}
+            onMarkAbsent={handleMarkAbsent}
+          />
+        </TabsContent>
+
+        <TabsContent value="perfect-attendance" className="m-0">
+          <StudentTable 
+            students={filteredStudents}
+            showExport={currentTab === 'all'}
+            showNotify={currentTab === 'low-attendance'}
+            showRecognition={currentTab === 'perfect-attendance'}
+            onViewProfile={(student) => {
+              setSelectedStudent(student);
+              setProfileOpen(true);
+            }}
+            onViewAttendance={(student) => {
+              setSelectedStudent(student);
+              setAttendanceOpen(true);
+            }}
+            onSendNotification={(student) => {
+              setSelectedStudent(student);
+              setNotificationOpen(true);
+            }}
+            onMarkAbsent={handleMarkAbsent}
+          />
+        </TabsContent>
+      </Tabs>
+
+      <StudentProfileDialog
+        student={selectedStudent}
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+      />
+
+      <StudentAttendanceDialog
+        student={selectedStudent}
+        open={attendanceOpen}
+        onOpenChange={setAttendanceOpen}
+      />
+
+      <SendNotificationDialog
+        student={selectedStudent}
+        open={notificationOpen}
+        onOpenChange={setNotificationOpen}
+      />
+    </div>
+  )
+}
+
+interface StudentTableProps {
+  students: Student[];
+  showExport?: boolean;
+  showNotify?: boolean;
+  showRecognition?: boolean;
+  onViewProfile: (student: Student) => void;
+  onViewAttendance: (student: Student) => void;
+  onSendNotification: (student: Student) => void;
+  onMarkAbsent: (student: Student) => void;
+}
+
+function StudentTable({ 
+  students, 
+  showExport, 
+  showNotify, 
+  showRecognition,
+  onViewProfile,
+  onViewAttendance,
+  onSendNotification,
+  onMarkAbsent
+}: StudentTableProps) {
+  return (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Student Directory</CardTitle>
-                <CardDescription>Showing 1-10 of 1,248 students</CardDescription>
+          <CardDescription>Showing {students.length} students</CardDescription>
               </div>
+        {showExport && <ExportButton students={students} />}
+        {showNotify && (
+          <Button variant="outline">
+            <AlertCircle className="mr-2 h-4 w-4" />
+            Send Notifications
+          </Button>
+        )}
+        {showRecognition && (
               <Button variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Export List
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            Send Recognition
               </Button>
+        )}
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -180,86 +370,63 @@ export default function StudentsPage() {
                       <th className="text-left py-3 px-4 font-medium">Student</th>
                       <th className="text-left py-3 px-4 font-medium">ID</th>
                       <th className="text-left py-3 px-4 font-medium">Department</th>
-                      <th className="text-left py-3 px-4 font-medium">Year</th>
                       <th className="text-left py-3 px-4 font-medium">Overall Attendance</th>
+                <th className="text-left py-3 px-4 font-medium">Last Present</th>
                       <th className="text-left py-3 px-4 font-medium">Status</th>
                       <th className="text-left py-3 px-4 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: 10 }).map((_, i) => (
-                      <tr key={i} className="border-b">
+              {students.map((student) => (
+                <tr key={student.id} className="border-b">
                         <td className="py-3 px-4">
                           <div className="flex items-center">
                             <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center mr-3">
                               <span className="text-xs font-medium">
-                                {`${["JS", "EJ", "MB", "SD", "DW", "AK", "RL", "TM", "CP", "LW"][i]}`}
+                          {student.name.split(" ").map(n => n[0]).join("")}
                               </span>
                             </div>
                             <div>
-                              {`${
-                                [
-                                  "John Smith",
-                                  "Emily Johnson",
-                                  "Michael Brown",
-                                  "Sarah Davis",
-                                  "David Wilson",
-                                  "Amanda Kim",
-                                  "Robert Lee",
-                                  "Thomas Miller",
-                                  "Catherine Parker",
-                                  "Laura Williams",
-                                ][i]
-                              }`}
+                        {student.name}
+                        <div className="text-xs text-muted-foreground">{student.email}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-4">{`CS2023${String(i + 1).padStart(3, "0")}`}</td>
-                        <td className="py-3 px-4">
-                          {
-                            [
-                              "Computer Science",
-                              "Computer Science",
-                              "Electrical Engineering",
-                              "Electrical Engineering",
-                              "Mechanical Engineering",
-                              "Mechanical Engineering",
-                              "Civil Engineering",
-                              "Civil Engineering",
-                              "Business Administration",
-                              "Business Administration",
-                            ][i]
-                          }
-                        </td>
-                        <td className="py-3 px-4">{`${["1st", "2nd", "3rd", "4th"][i % 4]} Year`}</td>
+                  <td className="py-3 px-4">{student.student_id}</td>
+                  <td className="py-3 px-4">{student.department || 'N/A'}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center space-x-2">
                             <div className="w-full max-w-[100px] bg-gray-200 rounded-full h-2">
                               <div
                                 className={`h-2 rounded-full ${
-                                  [92, 88, 95, 78, 85, 65, 98, 72, 80, 90][i] < 75 ? "bg-red-500" : "bg-teal-600"
+                            student.attendance_rate < 75 ? "bg-red-500" : 
+                            student.attendance_rate >= 90 ? "bg-green-500" : "bg-teal-600"
                                 }`}
-                                style={{ width: `${[92, 88, 95, 78, 85, 65, 98, 72, 80, 90][i]}%` }}
+                          style={{ width: `${student.attendance_rate}%` }}
                               ></div>
                             </div>
-                            <span className="text-xs font-medium">{[92, 88, 95, 78, 85, 65, 98, 72, 80, 90][i]}%</span>
+                      <span className="text-xs font-medium">
+                        {student.attendance_rate}% ({student.classes_attended}/{student.total_classes})
+                      </span>
                           </div>
+                        </td>
+                  <td className="py-3 px-4">
+                    {student.last_attendance 
+                      ? new Date(student.last_attendance).toLocaleDateString()
+                      : 'Never'
+                    }
                         </td>
                         <td className="py-3 px-4">
                           <Badge
                             className={
-                              [92, 88, 95, 78, 85, 65, 98, 72, 80, 90][i] < 75
+                        student.status === "At Risk"
                                 ? "bg-red-500"
-                                : [92, 88, 95, 78, 85, 65, 98, 72, 80, 90][i] >= 90
+                          : student.status === "Excellent"
                                   ? "bg-green-500"
                                   : "bg-teal-600"
                             }
                           >
-                            {[92, 88, 95, 78, 85, 65, 98, 72, 80, 90][i] < 75
-                              ? "At Risk"
-                              : [92, 88, 95, 78, 85, 65, 98, 72, 80, 90][i] >= 90
-                                ? "Excellent"
-                                : "Good"}
+                      {student.status}
                           </Badge>
                         </td>
                         <td className="py-3 px-4">
@@ -270,220 +437,29 @@ export default function StudentsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem>View Profile</DropdownMenuItem>
-                              <DropdownMenuItem>View Attendance</DropdownMenuItem>
-                              <DropdownMenuItem>Send Notification</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-red-600">Mark Absent</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onViewProfile(student)}>
+                          View Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onViewAttendance(student)}>
+                          View Attendance
+                        </DropdownMenuItem>
+                        
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>
                       </tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-muted-foreground">Showing 1-10 of 1,248 students</div>
-                <div className="flex items-center space-x-2">
-                  <Button variant="outline" size="sm" disabled>
-                    Previous
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    Next
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="low-attendance" className="m-0">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Students with Low Attendance</CardTitle>
-                <CardDescription>Students below 75% attendance threshold</CardDescription>
-              </div>
-              <Button variant="outline">
-                <AlertCircle className="mr-2 h-4 w-4" />
-                Send Notifications
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-4 font-medium">Student</th>
-                      <th className="text-left py-3 px-4 font-medium">ID</th>
-                      <th className="text-left py-3 px-4 font-medium">Department</th>
-                      <th className="text-left py-3 px-4 font-medium">Attendance</th>
-                      <th className="text-left py-3 px-4 font-medium">Missing Classes</th>
-                      <th className="text-left py-3 px-4 font-medium">Last Present</th>
-                      <th className="text-left py-3 px-4 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      {
-                        name: "Amanda Kim",
-                        id: "CS2023006",
-                        department: "Mechanical Engineering",
-                        attendance: 65,
-                        missing: 12,
-                        lastPresent: "2 days ago",
-                      },
-                      {
-                        name: "Thomas Miller",
-                        id: "CS2023008",
-                        department: "Civil Engineering",
-                        attendance: 72,
-                        missing: 8,
-                        lastPresent: "Today",
-                      },
-                    ].map((student, i) => (
-                      <tr key={i} className="border-b">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center mr-3">
-                              <span className="text-xs font-medium">
-                                {student.name
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")}
-                              </span>
-                            </div>
-                            <div>{student.name}</div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">{student.id}</td>
-                        <td className="py-3 px-4">{student.department}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-full max-w-[100px] bg-gray-200 rounded-full h-2">
-                              <div
-                                className="h-2 rounded-full bg-red-500"
-                                style={{ width: `${student.attendance}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs font-medium">{student.attendance}%</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">{student.missing} classes</td>
-                        <td className="py-3 px-4">{student.lastPresent}</td>
-                        <td className="py-3 px-4">
-                          <Button variant="outline" size="sm">
-                            Contact
-                          </Button>
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                    No students found
                         </td>
                       </tr>
-                    ))}
+              )}
                   </tbody>
                 </table>
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="perfect-attendance" className="m-0">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Students with Perfect Attendance</CardTitle>
-                <CardDescription>Students with 90% or higher attendance</CardDescription>
-              </div>
-              <Button variant="outline">
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Send Recognition
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-4 font-medium">Student</th>
-                      <th className="text-left py-3 px-4 font-medium">ID</th>
-                      <th className="text-left py-3 px-4 font-medium">Department</th>
-                      <th className="text-left py-3 px-4 font-medium">Attendance</th>
-                      <th className="text-left py-3 px-4 font-medium">Consecutive Days</th>
-                      <th className="text-left py-3 px-4 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      {
-                        name: "John Smith",
-                        id: "CS2023001",
-                        department: "Computer Science",
-                        attendance: 92,
-                        consecutive: 45,
-                      },
-                      {
-                        name: "Michael Brown",
-                        id: "CS2023003",
-                        department: "Electrical Engineering",
-                        attendance: 95,
-                        consecutive: 60,
-                      },
-                      {
-                        name: "Robert Lee",
-                        id: "CS2023007",
-                        department: "Civil Engineering",
-                        attendance: 98,
-                        consecutive: 75,
-                      },
-                      {
-                        name: "Laura Williams",
-                        id: "CS2023010",
-                        department: "Business Administration",
-                        attendance: 90,
-                        consecutive: 30,
-                      },
-                    ].map((student, i) => (
-                      <tr key={i} className="border-b">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center mr-3">
-                              <span className="text-xs font-medium">
-                                {student.name
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")}
-                              </span>
-                            </div>
-                            <div>{student.name}</div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">{student.id}</td>
-                        <td className="py-3 px-4">{student.department}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-full max-w-[100px] bg-gray-200 rounded-full h-2">
-                              <div
-                                className="h-2 rounded-full bg-green-500"
-                                style={{ width: `${student.attendance}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs font-medium">{student.attendance}%</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">{student.consecutive} days</td>
-                        <td className="py-3 px-4">
-                          <Button variant="outline" size="sm">
-                            View Profile
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  )
+  );
 }

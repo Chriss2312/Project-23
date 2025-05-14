@@ -107,27 +107,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                           </a>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton asChild>
-                          <a href="/reports">
-                            <FileText />
-                            <span>Export Reports</span>
-                          </a>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
+                      
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>
               </SidebarContent>
               <SidebarFooter>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton>
-                      <Settings />
-                      <span>Settings</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
+                
               </SidebarFooter>
             </Sidebar>
 

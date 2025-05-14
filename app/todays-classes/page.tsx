@@ -1,3 +1,5 @@
+'use client';
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -5,7 +7,6 @@ import {
   BookOpen,
   Calendar,
   Clock,
-  FingerprintIcon as FingerPrint,
   MapPin,
   MoreHorizontal,
   Search,
@@ -15,21 +16,73 @@ import {
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { API_ENDPOINTS, fetchApi, TimetableClass, TodayClassesResponse } from "@/lib/api"
+import { useEffect, useState } from "react"
+import { ClassDetailsDialog } from "@/components/class-details-dialog"
+import { ClassReportDialog } from "@/components/class-report-dialog"
 
 export default function TodaysClassesPage() {
+  const [classes, setClasses] = useState<TodayClassesResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const data = await fetchApi<TodayClassesResponse>(API_ENDPOINTS.todayClasses);
+        setClasses(data);
+      } catch (err) {
+        setError('Failed to load classes');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClasses();
+    // Refresh every minute
+    const interval = setInterval(fetchClasses, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const today = new Date();
+  const dateString = today.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  if (loading) {
+    return <div className="w-full h-full p-6">Loading...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-full p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">Today's Classes</h1>
-          <p className="text-muted-foreground">Monday, April 29, 2025</p>
+          <p className="text-muted-foreground">{dateString}</p>
         </div>
         <div className="flex items-center space-x-4">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input type="search" placeholder="Search classes..." className="w-[250px] pl-8" />
           </div>
-          <Button>
+          <Button onClick={() => window.location.href = '/calendar'}>
             <Calendar className="mr-2 h-4 w-4" />
             View Calendar
           </Button>
@@ -38,92 +91,101 @@ export default function TodaysClassesPage() {
 
       <Tabs defaultValue="ongoing">
         <TabsList className="mb-6">
-          <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
-          <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
+          <TabsTrigger value="ongoing">Ongoing ({classes?.ongoing.length || 0})</TabsTrigger>
+          <TabsTrigger value="upcoming">Upcoming ({classes?.upcoming.length || 0})</TabsTrigger>
+          <TabsTrigger value="completed">Completed ({classes?.completed.length || 0})</TabsTrigger>
           <TabsTrigger value="all">All Classes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ongoing" className="m-0">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <OngoingClassCard
-              title="Database Systems"
-              code="CS401"
-              time="09:00 - 10:30"
-              location="Room 201, CS Building"
-              instructor="Dr. Sarah Johnson"
-              attendanceRate={92}
-              studentsPresent={42}
-              totalStudents={45}
-              status="In Progress"
-            />
-            <OngoingClassCard
-              title="Software Engineering"
-              code="CS402"
-              time="09:30 - 11:00"
-              location="Room 305, Engineering Block"
-              instructor="Prof. Michael Chen"
-              attendanceRate={88}
-              studentsPresent={35}
-              totalStudents={40}
-              status="In Progress"
-            />
-            <OngoingClassCard
-              title="Computer Networks"
-              code="CS403"
-              time="10:00 - 11:30"
-              location="Lab 102, IT Building"
-              instructor="Dr. Robert Wilson"
-              attendanceRate={85}
-              studentsPresent={34}
-              totalStudents={40}
-              status="In Progress"
-            />
+            {classes?.ongoing.map((cls) => (
+              <OngoingClassCard 
+                key={cls.id} 
+                {...cls} 
+                onViewDetails={() => {
+                  setSelectedClassId(cls.id);
+                  setDetailsOpen(true);
+                }}
+              />
+            ))}
+            {classes?.ongoing.length === 0 && (
+              <div className="col-span-full text-center py-8 text-muted-foreground">
+                No ongoing classes at the moment
+              </div>
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="upcoming" className="m-0">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <UpcomingClassCard
-              title="Operating Systems"
-              code="CS404"
-              time="13:00 - 14:30"
-              location="Room 201, CS Building"
-              instructor="Dr. James Miller"
-              totalStudents={38}
-              startingIn="2 hours 15 minutes"
-            />
-            <UpcomingClassCard
-              title="Web Development"
-              code="CS405"
-              time="14:30 - 16:00"
-              location="Lab 103, IT Building"
-              instructor="Prof. Emily Davis"
-              totalStudents={42}
-              startingIn="3 hours 45 minutes"
-            />
-            <UpcomingClassCard
-              title="Artificial Intelligence"
-              code="CS406"
-              time="16:00 - 17:30"
-              location="Room 305, Engineering Block"
-              instructor="Dr. Lisa Wang"
-              totalStudents={35}
-              startingIn="5 hours 15 minutes"
-            />
+            {classes?.upcoming.map((cls) => (
+              <UpcomingClassCard 
+                key={cls.id} 
+                {...cls}
+                onViewDetails={() => {
+                  setSelectedClassId(cls.id);
+                  setDetailsOpen(true);
+                }}
+              />
+            ))}
+            {classes?.upcoming.length === 0 && (
+              <div className="col-span-full text-center py-8 text-muted-foreground">
+                No upcoming classes for today
+              </div>
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="completed" className="m-0">
-          <CompletedClassesTable />
+          <CompletedClassesTable 
+            classes={classes?.completed || []} 
+            onViewDetails={(id) => {
+              setSelectedClassId(id);
+              setDetailsOpen(true);
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="all" className="m-0">
-          <AllClassesTable />
+          <AllClassesTable 
+            classes={[
+              ...(classes?.completed || []),
+              ...(classes?.ongoing || []),
+              ...(classes?.upcoming || [])
+            ]}
+            onViewDetails={(id) => {
+              setSelectedClassId(id);
+              setDetailsOpen(true);
+            }}
+            onViewReport={(id) => {
+              setSelectedClassId(id);
+              setReportOpen(true);
+            }}
+          />
         </TabsContent>
       </Tabs>
+
+      {selectedClassId && (
+        <>
+          <ClassDetailsDialog
+            classId={selectedClassId}
+            open={detailsOpen}
+            onOpenChange={setDetailsOpen}
+          />
+          <ClassReportDialog
+            classId={selectedClassId}
+            open={reportOpen}
+            onOpenChange={setReportOpen}
+          />
+        </>
+      )}
     </div>
   )
+}
+
+interface OngoingClassCardProps extends TimetableClass {
+  onViewDetails: () => void;
 }
 
 function OngoingClassCard({
@@ -136,7 +198,8 @@ function OngoingClassCard({
   studentsPresent,
   totalStudents,
   status,
-}) {
+  onViewDetails,
+}: OngoingClassCardProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -153,7 +216,7 @@ function OngoingClassCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>View Details</DropdownMenuItem>
+              <DropdownMenuItem onClick={onViewDetails}>View Details</DropdownMenuItem>
               <DropdownMenuItem>View Attendance</DropdownMenuItem>
               <DropdownMenuItem>Send Notification</DropdownMenuItem>
               <DropdownMenuItem>End Class</DropdownMenuItem>
@@ -190,11 +253,7 @@ function OngoingClassCard({
           </div>
 
           <div className="flex space-x-2 pt-2">
-            <Button className="flex-1">
-              <FingerPrint className="mr-2 h-4 w-4" />
-              Scanner
-            </Button>
-            <Button variant="outline" className="flex-1">
+            <Button className="flex-1" onClick={onViewDetails}>
               <Users className="mr-2 h-4 w-4" />
               Students
             </Button>
@@ -205,14 +264,27 @@ function OngoingClassCard({
   )
 }
 
-function UpcomingClassCard({ title, code, time, location, instructor, totalStudents, startingIn }) {
+interface UpcomingClassCardProps extends TimetableClass {
+  onViewDetails: () => void;
+}
+
+function UpcomingClassCard({
+  title,
+  code,
+  time,
+  location,
+  instructor,
+  totalStudents,
+  startingIn,
+  onViewDetails,
+}: UpcomingClassCardProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
           <div>
             <Badge variant="outline" className="mb-2">
-              Starting in {startingIn}
+              Starting {startingIn}
             </Badge>
             <CardTitle>{title}</CardTitle>
             <CardDescription>{code}</CardDescription>
@@ -224,7 +296,7 @@ function UpcomingClassCard({ title, code, time, location, instructor, totalStude
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>View Details</DropdownMenuItem>
+              <DropdownMenuItem onClick={onViewDetails}>View Details</DropdownMenuItem>
               <DropdownMenuItem>Prepare Attendance</DropdownMenuItem>
               <DropdownMenuItem>Send Notification</DropdownMenuItem>
               <DropdownMenuItem>Reschedule</DropdownMenuItem>
@@ -252,11 +324,7 @@ function UpcomingClassCard({ title, code, time, location, instructor, totalStude
           </div>
 
           <div className="flex space-x-2 pt-2">
-            <Button variant="outline" className="flex-1">
-              <FingerPrint className="mr-2 h-4 w-4" />
-              Prepare Scanner
-            </Button>
-            <Button className="flex-1">
+            <Button className="flex-1" onClick={onViewDetails}>
               <BookOpen className="mr-2 h-4 w-4" />
               Class Details
             </Button>
@@ -267,50 +335,12 @@ function UpcomingClassCard({ title, code, time, location, instructor, totalStude
   )
 }
 
-function CompletedClassesTable() {
-  const completedClasses = [
-    {
-      id: 1,
-      title: "Database Systems",
-      code: "CS401",
-      time: "09:00 - 10:30",
-      instructor: "Dr. Sarah Johnson",
-      attendanceRate: 92,
-      studentsPresent: 42,
-      totalStudents: 45,
-    },
-    {
-      id: 2,
-      title: "Software Engineering",
-      code: "CS402",
-      time: "09:30 - 11:00",
-      instructor: "Prof. Michael Chen",
-      attendanceRate: 88,
-      studentsPresent: 35,
-      totalStudents: 40,
-    },
-    {
-      id: 3,
-      title: "Computer Networks",
-      code: "CS403",
-      time: "10:00 - 11:30",
-      instructor: "Dr. Robert Wilson",
-      attendanceRate: 85,
-      studentsPresent: 34,
-      totalStudents: 40,
-    },
-    {
-      id: 4,
-      title: "Mobile App Development",
-      code: "CS407",
-      time: "08:00 - 09:30",
-      instructor: "Prof. Jessica Lee",
-      attendanceRate: 78,
-      studentsPresent: 31,
-      totalStudents: 40,
-    },
-  ]
+interface CompletedClassesTableProps {
+  classes: TimetableClass[];
+  onViewDetails: (id: string) => void;
+}
 
+function CompletedClassesTable({ classes, onViewDetails }: CompletedClassesTableProps) {
   return (
     <Card>
       <CardHeader>
@@ -330,7 +360,7 @@ function CompletedClassesTable() {
               </tr>
             </thead>
             <tbody>
-              {completedClasses.map((cls) => (
+              {classes.map((cls) => (
                 <tr key={cls.id} className="border-b">
                   <td className="py-3 px-4">
                     <div className="font-medium">{cls.title}</div>
@@ -341,7 +371,10 @@ function CompletedClassesTable() {
                   <td className="py-3 px-4">
                     <div className="flex items-center space-x-2">
                       <div className="w-full max-w-[100px] bg-gray-200 rounded-full h-2">
-                        <div className="bg-teal-600 h-2 rounded-full" style={{ width: `${cls.attendanceRate}%` }}></div>
+                        <div
+                          className="bg-teal-600 h-2 rounded-full"
+                          style={{ width: `${cls.attendanceRate}%` }}
+                        ></div>
                       </div>
                       <span className="text-xs font-medium">
                         {cls.attendanceRate}% ({cls.studentsPresent}/{cls.totalStudents})
@@ -349,12 +382,19 @@ function CompletedClassesTable() {
                     </div>
                   </td>
                   <td className="py-3 px-4">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => onViewDetails(cls.id)}>
                       View Details
                     </Button>
                   </td>
                 </tr>
               ))}
+              {classes.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                    No completed classes for today
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -363,66 +403,13 @@ function CompletedClassesTable() {
   )
 }
 
-function AllClassesTable() {
-  const allClasses = [
-    {
-      id: 1,
-      title: "Database Systems",
-      code: "CS401",
-      time: "09:00 - 10:30",
-      instructor: "Dr. Sarah Johnson",
-      status: "Completed",
-    },
-    {
-      id: 2,
-      title: "Software Engineering",
-      code: "CS402",
-      time: "09:30 - 11:00",
-      instructor: "Prof. Michael Chen",
-      status: "Completed",
-    },
-    {
-      id: 3,
-      title: "Computer Networks",
-      code: "CS403",
-      time: "10:00 - 11:30",
-      instructor: "Dr. Robert Wilson",
-      status: "In Progress",
-    },
-    {
-      id: 4,
-      title: "Operating Systems",
-      code: "CS404",
-      time: "13:00 - 14:30",
-      instructor: "Dr. James Miller",
-      status: "Upcoming",
-    },
-    {
-      id: 5,
-      title: "Web Development",
-      code: "CS405",
-      time: "14:30 - 16:00",
-      instructor: "Prof. Emily Davis",
-      status: "Upcoming",
-    },
-    {
-      id: 6,
-      title: "Artificial Intelligence",
-      code: "CS406",
-      time: "16:00 - 17:30",
-      instructor: "Dr. Lisa Wang",
-      status: "Upcoming",
-    },
-    {
-      id: 7,
-      title: "Mobile App Development",
-      code: "CS407",
-      time: "08:00 - 09:30",
-      instructor: "Prof. Jessica Lee",
-      status: "Completed",
-    },
-  ]
+interface AllClassesTableProps {
+  classes: TimetableClass[];
+  onViewDetails: (id: string) => void;
+  onViewReport: (id: string) => void;
+}
 
+function AllClassesTable({ classes, onViewDetails, onViewReport }: AllClassesTableProps) {
   return (
     <Card>
       <CardHeader>
@@ -442,7 +429,7 @@ function AllClassesTable() {
               </tr>
             </thead>
             <tbody>
-              {allClasses.map((cls) => (
+              {classes.map((cls) => (
                 <tr key={cls.id} className="border-b">
                   <td className="py-3 px-4">
                     <div className="font-medium">{cls.title}</div>
@@ -463,13 +450,25 @@ function AllClassesTable() {
                       {cls.status}
                     </Badge>
                   </td>
-                  <td className="py-3 px-4">
-                    <Button variant="outline" size="sm">
-                      {cls.status === "Completed" ? "View Report" : "View Details"}
+                  <td className="py-3 px-4 space-x-2">
+                    <Button variant="outline" size="sm" onClick={() => onViewDetails(cls.id)}>
+                      View Details
                     </Button>
+                    {cls.status === "Completed" && (
+                      <Button variant="outline" size="sm" onClick={() => onViewReport(cls.id)}>
+                        View Report
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
+              {classes.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                    No classes scheduled for today
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,9 +1,78 @@
+'use client';
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AlertCircle, CheckCircle2, FingerprintIcon as FingerPrint, RefreshCw, UserCheck, Users } from "lucide-react"
+import { API_ENDPOINTS, AttendanceRecord, ScannerStats, fetchApi } from "@/lib/api"
+import { useEffect, useState } from "react"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function ScannerPage() {
+  const [stats, setStats] = useState<ScannerStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
+  const { toast } = useToast()
+
+  const fetchStats = async () => {
+    try {
+      const data = await fetchApi<ScannerStats>(API_ENDPOINTS.scannerStats)
+      setStats(data)
+      if (data.current_class) {
+        fetchAttendanceRecords(data.current_class.id)
+      }
+    } catch (err) {
+      console.error('Failed to fetch scanner stats:', err)
+      setError('Failed to load scanner statistics')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchAttendanceRecords = async (classId: string) => {
+    try {
+      const data = await fetchApi<AttendanceRecord[]>(API_ENDPOINTS.currentClassAttendance(classId))
+      setAttendanceRecords(data)
+    } catch (err) {
+      console.error('Failed to fetch attendance records:', err)
+      toast({
+        title: "Error",
+        description: "Failed to load attendance records",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleRefresh = () => {
+    setLoading(true)
+    fetchStats()
+  }
+
+  useEffect(() => {
+    fetchStats()
+    // Set up polling for updates
+    const interval = setInterval(fetchStats, 30000) // Poll every 30 seconds
+    return () => clearInterval(interval)
+  }, [])
+
+  if (loading) {
+    return <div className="w-full h-full p-6">Loading...</div>
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-full p-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+          {error}
+        </div>
+      </div>
+    )
+  }
+
+  const presentStudents = attendanceRecords.filter(record => record.status === 'present' || record.status === 'late')
+  const absentStudents = attendanceRecords.filter(record => record.status === 'absent')
+
   return (
     <div className="w-full h-full p-6">
       <div className="flex items-center justify-between mb-6">
@@ -16,7 +85,7 @@ export default function ScannerPage() {
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             <span className="text-sm font-medium">Scanner Connected</span>
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -29,7 +98,7 @@ export default function ScannerPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Scans Today</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">247</div>
+            <div className="text-3xl font-bold">{stats?.total_scans_today || 0}</div>
             <p className="text-xs text-muted-foreground mt-1">Across all classes</p>
           </CardContent>
         </Card>
@@ -38,8 +107,12 @@ export default function ScannerPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Current Class</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">CS401</div>
-            <p className="text-xs text-muted-foreground mt-1">Database Systems (09:00 - 10:30)</p>
+            <div className="text-3xl font-bold">{stats?.current_class?.subject_code || 'No Active Class'}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats?.current_class 
+                ? `${stats.current_class.subject} (${stats.current_class.start_time} - ${stats.current_class.end_time})`
+                : 'Waiting for next class'}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -47,8 +120,22 @@ export default function ScannerPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Attendance Rate</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-teal-600">92%</div>
-            <p className="text-xs text-muted-foreground mt-1">42/45 students present</p>
+            {stats?.current_class && (
+              <>
+                <div className="text-3xl font-bold text-teal-600">
+                  {((stats.current_class.present_students / stats.current_class.total_students) * 100).toFixed(1)}%
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stats.current_class.present_students}/{stats.current_class.total_students} students present
+                </p>
+              </>
+            )}
+            {!stats?.current_class && (
+              <>
+                <div className="text-3xl font-bold">-</div>
+                <p className="text-xs text-muted-foreground mt-1">No active class</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -74,11 +161,21 @@ export default function ScannerPage() {
                 <div className="text-center mb-2">
                   <p className="text-sm font-medium">Last Scan Result</p>
                 </div>
-                <div className="flex items-center justify-center space-x-2 text-green-600 dark:text-green-400">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="font-medium">Successfully Verified</span>
-                </div>
-                <div className="mt-2 text-center text-sm text-muted-foreground">John Smith (CS2023001)</div>
+                {stats?.last_scan ? (
+                  <>
+                    <div className="flex items-center justify-center space-x-2 text-green-600 dark:text-green-400">
+                      <CheckCircle2 className="h-5 w-5" />
+                      <span className="font-medium">Successfully Verified</span>
+                    </div>
+                    <div className="mt-2 text-center text-sm text-muted-foreground">
+                      {stats.last_scan.student_name} ({stats.last_scan.student_id})
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center text-sm text-muted-foreground">
+                    No recent scans
+                  </div>
+                )}
               </div>
 
               <Button className="w-full">
@@ -93,18 +190,22 @@ export default function ScannerPage() {
           <Card className="h-full">
             <CardHeader>
               <CardTitle>Attendance Tracking</CardTitle>
-              <CardDescription>Current class: Database Systems (CS401)</CardDescription>
+              <CardDescription>
+                {stats?.current_class 
+                  ? `Current class: ${stats.current_class.subject} (${stats.current_class.subject_code})`
+                  : 'No active class'}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="present">
                 <TabsList className="mb-4">
                   <TabsTrigger value="present" className="flex items-center">
                     <UserCheck className="mr-2 h-4 w-4" />
-                    Present (42)
+                    Present ({presentStudents.length})
                   </TabsTrigger>
                   <TabsTrigger value="absent" className="flex items-center">
                     <AlertCircle className="mr-2 h-4 w-4" />
-                    Absent (3)
+                    Absent ({absentStudents.length})
                   </TabsTrigger>
                   <TabsTrigger value="all" className="flex items-center">
                     <Users className="mr-2 h-4 w-4" />
@@ -124,14 +225,18 @@ export default function ScannerPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {Array.from({ length: 10 }).map((_, i) => (
-                          <tr key={i} className="border-b">
-                            <td className="py-3 px-4">Student Name {i + 1}</td>
-                            <td className="py-3 px-4">CS2023{String(i + 1).padStart(3, "0")}</td>
-                            <td className="py-3 px-4">{`09:${(i * 2 + 10).toString().padStart(2, "0")} AM`}</td>
+                        {presentStudents.map((record) => (
+                          <tr key={record.id} className="border-b">
+                            <td className="py-3 px-4">{record.student_name}</td>
+                            <td className="py-3 px-4">{record.student_id}</td>
+                            <td className="py-3 px-4">{record.time_in}</td>
                             <td className="py-3 px-4">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                Present
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                record.status === 'late' 
+                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                  : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                              }`}>
+                                {record.status === 'late' ? 'Late' : 'Present'}
                               </span>
                             </td>
                           </tr>
@@ -153,10 +258,10 @@ export default function ScannerPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {Array.from({ length: 3 }).map((_, i) => (
-                          <tr key={i} className="border-b">
-                            <td className="py-3 px-4">Absent Student {i + 1}</td>
-                            <td className="py-3 px-4">CS2023{String(i + 42).padStart(3, "0")}</td>
+                        {absentStudents.map((record) => (
+                          <tr key={record.id} className="border-b">
+                            <td className="py-3 px-4">{record.student_name}</td>
+                            <td className="py-3 px-4">{record.student_id}</td>
                             <td className="py-3 px-4">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                                 Absent
@@ -186,24 +291,22 @@ export default function ScannerPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {Array.from({ length: 15 }).map((_, i) => (
-                          <tr key={i} className="border-b">
-                            <td className="py-3 px-4">Student {i + 1}</td>
-                            <td className="py-3 px-4">CS2023{String(i + 1).padStart(3, "0")}</td>
+                        {attendanceRecords.map((record) => (
+                          <tr key={record.id} className="border-b">
+                            <td className="py-3 px-4">{record.student_name}</td>
+                            <td className="py-3 px-4">{record.student_id}</td>
                             <td className="py-3 px-4">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  i < 12
-                                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                                    : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                                }`}
-                              >
-                                {i < 12 ? "Present" : "Absent"}
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                record.status === 'present'
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                  : record.status === 'late'
+                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                  : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                              }`}>
+                                {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
                               </span>
                             </td>
-                            <td className="py-3 px-4">
-                              {i < 12 ? `09:${(i * 2 + 10).toString().padStart(2, "0")} AM` : "-"}
-                            </td>
+                            <td className="py-3 px-4">{record.time_in || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
