@@ -66,7 +66,7 @@ export default function ClassesPage() {
     tolerance_minutes: 30,
     semester: "Fall 2024",
     academic_year: "2024-2025",
-    timezone: "UTC"
+    timezone: "UTC+3"
   })
 
   const [selectedClassId, setSelectedClassId] = useState<string | undefined>()
@@ -78,7 +78,7 @@ export default function ClassesPage() {
 
   const validateForm = () => {
     const errors: Partial<Record<keyof NewTimetable, string>> = {}
-    
+
     if (!newClass.subject) errors.subject = "Subject is required"
     if (!newClass.subject_code) errors.subject_code = "Subject code is required"
     if (!newClass.instructor_name) errors.instructor_name = "Instructor name is required"
@@ -155,11 +155,11 @@ export default function ClassesPage() {
         tolerance_minutes: 30,
         semester: "Fall 2024",
         academic_year: "2024-2025",
-        timezone: "UTC"
+        timezone: "UTC+3"
       })
       setSelectedDepartmentId("");
       setAddDialogOpen(false)
-      
+
       // Refresh both departments and classes
       await Promise.all([fetchDepartments(), fetchClasses()])
     } catch (err: any) {
@@ -210,7 +210,7 @@ export default function ClassesPage() {
     fetchClasses()
   }, [selectedDepartment, selectedDay])
 
-  const filteredClasses = classes.filter(cls => 
+  const filteredClasses = classes.filter(cls =>
     cls.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cls.subject_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cls.instructor_name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -239,9 +239,9 @@ export default function ClassesPage() {
         </div>
         <div className="flex items-center space-x-4">
           <Button onClick={() => setAddDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Class
-              </Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Class
+          </Button>
         </div>
       </div>
 
@@ -290,35 +290,35 @@ export default function ClassesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
         {filteredClasses.map((cls) => (
           <Card key={cls.id}>
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div>
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-start">
+                <div>
                   <CardTitle>{cls.subject}</CardTitle>
                   <CardDescription>{cls.subject_code}</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center text-sm">
-                      <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center text-sm">
+                  <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
                   <span>{departments.find(d => d.id === cls.department_id)?.name || 'Unknown Department'}</span>
-                    </div>
-                    <div className="flex items-center text-sm">
-                      <User className="mr-2 h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex items-center text-sm">
+                  <User className="mr-2 h-4 w-4 text-muted-foreground" />
                   <span>{cls.instructor_name}</span>
-                    </div>
-                    <div className="flex items-center text-sm">
-                      <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex items-center text-sm">
+                  <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
                   <span>{cls.start_time} - {cls.end_time}</span>
-                    </div>
-                    <div className="flex items-center text-sm">
-                      <Users className="mr-2 h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex items-center text-sm">
+                  <Users className="mr-2 h-4 w-4 text-muted-foreground" />
                   <span>Room: {cls.room}</span>
-                    </div>
+                </div>
 
-                    <div className="flex space-x-2 pt-2">
-                  <Button 
+                <div className="flex space-x-2 pt-2">
+                  <Button
                     className="flex-1"
                     onClick={() => {
                       setSelectedClassId(cls.id)
@@ -327,23 +327,23 @@ export default function ClassesPage() {
                   >
                     View Attendance
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="flex-1"
                     onClick={() => {
                       setSelectedClassId(cls.id)
                       setDetailsOpen(true)
                     }}
                   >
-                        <Calendar className="mr-2 h-4 w-4" />
-                        Schedule
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Schedule
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       <ClassAttendanceDialog
         classId={selectedClassId}

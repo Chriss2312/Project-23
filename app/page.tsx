@@ -5,6 +5,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Download,
   FileText,
   FingerprintIcon as FingerPrint,
   Home,
@@ -30,6 +31,8 @@ import {
 } from "@/components/ui/sidebar"
 import { useEffect, useState } from "react"
 import { API_ENDPOINTS, fetchApi } from "@/lib/api"
+import { useToast } from "@/components/ui/use-toast"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 
 // Define types for our API responses
 interface DashboardStats {
@@ -63,9 +66,19 @@ interface AttendanceRecord {
   status: string;
 }
 
-export default function AdminDashboard() {
+export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  // Sample data for the chart
+  const attendanceTrend = [
+    { date: "Mon", attendance: 80 },
+    { date: "Tue", attendance: 85 },
+    { date: "Wed", attendance: 78 },
+    { date: "Thu", attendance: 90 },
+    { date: "Fri", attendance: 88 },
+  ];
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -174,7 +187,10 @@ export default function AdminDashboard() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <header className="bg-white dark:bg-gray-800 shadow-sm">
             <div className="px-6 py-4 flex items-center justify-between">
-              <h1 className="text-2xl font-bold">Dashboard</h1>
+              <div>
+                <h1 className="text-2xl font-bold">Dashboard</h1>
+                <p className="text-muted-foreground mt-1">Welcome back, Admin! Here’s a quick overview of your system.</p>
+              </div>
               <div className="flex items-center space-x-4">
                 <Button variant="outline" asChild>
                   <a href="/todays-classes">
@@ -188,11 +204,22 @@ export default function AdminDashboard() {
                     Scanner Status
                   </a>
                 </Button>
+                <Button onClick={() => toast({ title: 'Report Downloaded', description: 'Attendance report has been downloaded.' })}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Report
+                </Button>
               </div>
             </div>
           </header>
-
           <main className="flex-1 overflow-auto p-6">
+            {/* Notification Area */}
+            <div className="mb-6">
+              <div className="bg-blue-100 border border-blue-300 text-blue-800 px-4 py-3 rounded relative" role="alert">
+                <strong className="font-bold">Notice:</strong>
+                <span className="block sm:inline"> System maintenance scheduled for this weekend. Please save your work.</span>
+              </div>
+            </div>
+
             {error ? (
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
                 <strong className="font-bold">Error!</strong>
@@ -251,6 +278,26 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent>
                       <AttendanceByDepartment />
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  <Card className="col-span-1">
+                    <CardHeader>
+                      <CardTitle>Attendance Trend (Sample)</CardTitle>
+                      <CardDescription>Attendance rate over the week</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={attendanceTrend}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="attendance" stroke="#14b8a6" strokeWidth={2} />
+                        </LineChart>
+                      </ResponsiveContainer>
                     </CardContent>
                   </Card>
                 </div>
